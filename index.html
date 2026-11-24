@@ -1,0 +1,1228 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Поймай корабль</title>
+<style>
+  :root{
+    --bg:#0b1220; --panel:rgba(10,16,28,.88); --line:rgba(255,255,255,.14);
+    --text:#eef2f6; --muted:#9fb0c2; --ok:#5ee08a; --warn:#ffcf5a; --bad:#ff6a5a; --accent:#ffb347;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;height:100dvh}
+  #stage{position:relative;flex:1;min-height:0;overflow:hidden}
+  canvas{display:block;position:absolute;inset:0}
+  #hud{position:absolute;left:0;right:0;top:0;display:grid;grid-template-columns:repeat(4,1fr);
+    gap:1px;background:var(--line);border-bottom:1px solid var(--line);pointer-events:none}
+  .c{background:rgba(8,13,24,.78);padding:5px 8px 6px;min-width:0}
+  .c b{display:block;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+  .c span{display:block;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+  .c span.ok{color:var(--ok)} .c span.bad{color:var(--bad)} .c span.warn{color:var(--warn)}
+  #hint{position:absolute;left:8px;right:8px;text-align:center;font-size:13px;line-height:1.35;
+    color:#fff;text-shadow:0 1px 3px #000,0 0 8px rgba(0,0,0,.7);pointer-events:none}
+  #gust{position:absolute;left:0;right:0;text-align:center;font-weight:800;font-size:15px;color:var(--warn);
+    text-shadow:0 1px 3px #000;opacity:0;transition:opacity .25s;pointer-events:none}
+  #overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;
+    background:rgba(4,8,16,.45)}
+  #overlay.hide{display:none}
+  .card{width:100%;max-width:440px;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:18px 18px 16px;box-shadow:0 10px 40px rgba(0,0,0,.5);max-height:100%;overflow:auto}
+  .card h1{font-size:24px;line-height:1.15;margin-bottom:6px}
+  .card h1.ok{color:var(--ok)} .card h1.bad{color:var(--bad)} .card h1.warn{color:var(--warn)}
+  .card p{font-size:14px;line-height:1.45;color:#d5dde6;margin-bottom:8px}
+  .card ul{list-style:none;font-size:13.5px;line-height:1.5;color:#d5dde6;margin:6px 0 10px}
+  .card li{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--line);padding:2px 0}
+  .card li i{font-style:normal;color:var(--muted)}
+  .card li.tot{font-weight:800;font-size:16px;color:#fff;border-bottom:0;padding-top:6px}
+  .keys{font-size:13px;color:var(--muted);line-height:1.55;margin:4px 0 12px}
+  .keys kbd{display:inline-block;min-width:20px;padding:0 5px;border:1px solid var(--line);border-bottom-width:2px;
+    border-radius:4px;background:rgba(255,255,255,.06);color:#fff;font:600 12px/18px system-ui;text-align:center}
+  .btn{display:block;width:100%;padding:13px 16px;border:0;border-radius:10px;background:var(--accent);
+    color:#1b1205;font:800 17px system-ui;cursor:pointer;touch-action:manipulation}
+  .btn.alt{background:#2a3850;color:#fff;margin-top:8px}
+  .btn small{display:block;font-size:12px;font-weight:600;opacity:.75}
+  .btn:active{transform:translateY(1px)}
+  #pad{display:none;flex:0 0 auto;grid-template-columns:repeat(4,1fr);gap:6px;
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom));background:#0a0f1a;border-top:1px solid var(--line)}
+  @media (pointer:coarse),(max-width:760px){#pad{display:grid}}
+  #pad button{height:54px;border:1px solid rgba(255,255,255,.18);border-radius:12px;background:#1a2436;
+    color:#fff;font:700 15px system-ui;touch-action:none;-webkit-tap-highlight-color:transparent}
+  #pad button.big{font-size:24px}
+  #pad button.eng{background:#22303f;font-size:14px}
+  #pad button.on{background:#33507a;border-color:#7fb2ff}
+  #pad button#bFlip{grid-column:span 2;background:#7a3b12;border-color:#ffb347;font-size:15px}
+  #pad button#bFlip.on{background:#b5591c}
+  #pad button:disabled{opacity:.35}
+  #bRestart{position:absolute;left:8px;bottom:8px;z-index:2;padding:8px 12px;border:1px solid rgba(255,255,255,.25);
+    border-radius:10px;background:rgba(10,16,28,.8);color:#fff;font:700 14px system-ui;cursor:pointer;touch-action:manipulation}
+  #bRestart kbd{display:inline-block;margin-left:4px;padding:0 5px;border:1px solid rgba(255,255,255,.3);border-radius:4px;font:600 11px/16px system-ui}
+  #bRestart:focus-visible{outline:2px solid var(--accent)}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="hud">
+      <div class="c"><b>Высота</b><span id="hAlt">—</span></div>
+      <div class="c"><b>Верт. скор.</b><span id="hVy">—</span></div>
+      <div class="c"><b>Гориз. скор.</b><span id="hVx">—</span></div>
+      <div class="c"><b>Наклон</b><span id="hTh">—</span></div>
+      <div class="c"><b>Топливо</b><span id="hFuel">—</span></div>
+      <div class="c"><b>Двигатели</b><span id="hThr">—</span></div>
+      <div class="c"><b>Ветер</b><span id="hWind">—</span></div>
+      <div class="c"><b id="hArmL">До рук</b><span id="hArm">—</span></div>
+    </div>
+    <div id="hint"></div>
+    <div id="gust">Порыв ветра!</div>
+    <button id="bRestart" hidden>↻ Заново <kbd>R</kbd></button>
+    <div id="overlay"><div class="card" id="card"></div></div>
+  </div>
+  <div id="pad">
+    <button id="bEngDn" class="eng" aria-label="Погасить двигатель">Двиг. −</button>
+    <button id="bFlip">Переворот</button>
+    <button id="bEngUp" class="eng" aria-label="Зажечь двигатель">Двиг. +</button>
+    <button data-k="l" class="big" aria-label="Наклон влево">◀</button>
+    <button data-k="r" class="big" aria-label="Наклон вправо">▶</button>
+    <button data-k="d">Газ −</button>
+    <button data-k="u">Газ +</button>
+  </div>
+</div>
+<script>
+(() => {
+'use strict';
+// =====================================================================
+// ВСЕ ФИЗИЧЕСКИЕ И ИГРОВЫЕ ПАРАМЕТРЫ — ЗДЕСЬ.
+// Единицы: м, с, т, кН, кг/м³, градусы.
+// Числа взяты из открытых данных о Starship и Flight 15, источники перечислены в README.
+// В скобках: (офиц.) — данные SpaceX/FAA, (оценка) — расчёт по источникам,
+// (догадка) — порядок величины без источника, (игр.) — игровое допущение.
+// =====================================================================
+const CFG = {
+  g: 9.81,                       // м/с²
+
+  atmosphere: {
+    rho0: 1.225,                 // кг/м³ у земли (офиц., ISA)
+    scaleHeight: 9000,           // м, ρ = ρ0·e^(−h/H) (упрощённая ISA, ошибка < 5 % до 10 км)
+  },
+
+  ship: {
+    length: 52,                  // м (офиц., Block 2; у Block 3 ~52)
+    diameter: 9,                 // м (офиц.)
+    noseLength: 12,              // м, носовой обтекатель (рисунок)
+    cmHeight: 22,                // м, центр масс от днища (догадка)
+    pinHeight: 40,               // м, пины захвата от днища (догадка)
+    pinOut: 0.5,                 // м, вылет пинов из корпуса (оценка)
+    massAtIgnition: 130,         // т, масса при поджиге (оценка)
+    fuel: 12,                    // т, посадочное топливо (догадка); сухая масса = масса − топливо
+    // момент инерции по тангажу считается как I = m·(3R² + L²)/12 и пересчитывается по массе (оценка)
+  },
+
+  engines: {
+    count: 3,                    // атмосферных Raptor на посадке (офиц.)
+    thrust: 2452,                // кН, тяга одного у земли (офиц., 250 тс)
+    isp: 330,                    // с, удельный импульс у земли (оценка) → расход ≈ 757 кг/с при 100 %
+    minThrottle: 0.40,           // доля (оценка)
+    ignitionThrottle: 0.45,      // доля, газ при поджиге (оценка: Flight 15 сходится при 40–46 %)
+    throttleRate: 0.5,           // доля в секунду (догадка)
+    gimbalMax: 15,               // °, качание сопла (оценка)
+    gimbalRate: 30,              // °/с (догадка)
+    thrustArm: 20,               // м, плечо тяги: сопло — центр масс (догадка)
+    spoolUp: 1.5,                // с, выход на тягу после поджига (догадка)
+    spoolDown: 0.3,              // с, спад тяги при выключении (игр.)
+  },
+
+  aero: {
+    // площади считаются из размеров: поперёк оси L·D = 468 м², по оси π·D²/4 = 63,6 м²
+    cdHullSide: 0.40,            // Cd корпуса поперёк потока без закрылков (догадка; с закрылками на балансировке ≈ 0,55)
+    cdTail: 0.9,                 // Cd вдоль оси двигателями вперёд (оценка)
+    cdNose: 0.4,                 // Cd вдоль оси носом вперёд (догадка)
+    // поперечная сила ∝ sin²α, продольная ∝ cos²α (α — угол между осью и потоком) получается сама
+    // из разложения скорости относительно воздуха на продольную и поперечную составляющие
+    cpHeight: 23.5,              // м, центр давления корпуса от днища (догадка)
+    pitchDamping: 0.55,          // гашение вращения: M = −ρ·V·k·D·L³/12·ω (оценка)
+  },
+
+  flaps: {
+    cl: 1.2,                     // F = q·cl·S·u, u — раскрытие 0…1 (оценка)
+    aft: { area: 70, at: 9, trim: 0.6 },   // м² на пару, м от днища, раскрытие на балансировке (догадка)
+    fwd: { area: 30, at: 43, trim: 0.5 },
+    rate: 1 / 3,                 // доля хода в секунду (30°/с из 90°) (догадка)
+  },
+
+  wind: {
+    w10: [3, 7],                 // м/с на 10 м, случайно в диапазоне (офиц. климат: в среднем 5 м/с)
+    profileExp: 1 / 7,           // w(z) = w10·(z/10)^(1/7) (оценка)
+    gust: [1, 3],                // м/с, порыв (догадка)
+    gustChange: [2, 5],          // с, за сколько меняется порыв (догадка)
+  },
+
+  tower: {
+    height: 147,                 // м (офиц. 146 + ~1,5 м основания Pad 2)
+    halfWidth: 8,                // м, половина ширины колонны (рисунок)
+    armHeight: 100,              // м, высота рук (нет данных, по фото)
+    armThickness: 3.2,           // м (рисунок)
+    gapOpen: 22,                 // м между рельсами раскрытых рук (оценка)
+    gapClosed: 9.5,              // м между рельсами сомкнутых рук (оценка)
+    armLength: 23,               // м (рисунок)
+    closeTime: 2,                // с, время смыкания (догадка)
+    mountHalfWidth: 15,          // м, стартовый стол (рисунок)
+    mountHeight: 22,             // м
+  },
+
+  // Допуски поимки, режим «Реализм». Режим «Обычный» = эти числа × easyFactor.
+  catchReal: {
+    offset: 2,                   // м, промах между руками (догадка)
+    pinWindow: 2.5,              // м, ± по высоте пинов при смыкании (оценка)
+    vyOk: 2,                     // м/с, мягкая поимка (догадка)
+    vyHard: 5,                   // м/с, жёстко, но поймали; больше — авария (догадка)
+    vx: 1,                       // м/с, боковая скорость (догадка)
+    tilt: 5,                     // °, наклон в плоскости экрана (оценка)
+  },
+  easyFactor: 2,
+  // «Обычный» режим, дополнительно (игр.):
+  easyFuelFactor: 2,             // запас посадочного топлива ×2
+  easyOffset: 6.5,               // м, руки центруют корабль при промахе до ±6,5 м (предел модели Хансена: (22 − 9) / 2)
+
+  control: {                     // бортовой автопилот держит заданный игроком наклон (игр.)
+    bellyTiltMax: 20,            // °, отклонение от горизонтали закрылками
+    tiltMax: 25,                 // °, наклон корабля на двигателях (сопла при этом качаются в пределах gimbalMax)
+    bellyWn: 1.0, flipWn: 1.6, burnWn: 1.4, zeta: 0.8,  // жёсткость и демпфирование автопилота
+    // только «Обычный» режим: ◀ ▶ задают боковую скорость, наклон подбирает автопилот;
+    // отпущены — автопилот гасит снос. В «Реализме» ◀ ▶ задают наклон напрямую.
+    easyVx: 15,                  // (игр.) м/с, предел боковой скорости по ◀ ▶ (было 3 — на 100 м не хватало топлива)
+    easyVxRate: 5,               // (игр.) м/с за секунду: пока держишь ◀ ▶, заданная боковая скорость растёт; отпустил — плавно к нулю
+    driftHoldGain: 0.6,          // (игр.) желаемое боковое ускорение = −k·(Vx − Vзад) (было 0,25)
+    easyTorqueGain: 3,           // (игр.) «Обычный»: поворот на двигателях втрое бодрее, как с боковыми соплами
+    easyBellyTiltMax: 40,        // (игр.) «Обычный»: наклон плашмя до 40° вместо 20° — больше сдвиг вбок
+    easyBellyLift: 0.3,          // (игр.) «Обычный»: боковая «подъёмная» сила плашмя по ◀ ▶, доля веса
+  },
+
+  start: {
+    altitude: 1500,              // м (игр., короткий сценарий)
+    vy: -100,                    // м/с
+    vx: [0, 20],                 // м/с, модуль, направление случайное
+    offset: [50, 150],           // м, удаление от башни (игр.: с 1500 м падать вдвое меньше, было 100–300)
+  },
+
+  ignitionAboveArms: [500, 750], // м над руками, подсказка (оценка, оптимум ~550)
+
+  score: {
+    accuracy: 1000, softVy: 600, softVx: 200, softTilt: 200,
+    perTonFuel: 100,
+    hardPenalty: 0.5,            // множитель очков за жёсткую поимку
+  },
+};
+
+// ---------- производные величины ----------
+const G = CFG.g;
+const L = CFG.ship.length, D = CFG.ship.diameter, R = D / 2;
+const NOSE = CFG.ship.noseLength;
+const CM = CFG.ship.cmHeight;
+const S_GEO = L / 2 - CM;                    // геометрический центр относительно ЦМ, вдоль оси
+const S_PIN = CFG.ship.pinHeight - CM;
+const S_CP = CFG.aero.cpHeight - CM;
+const S_FA = CFG.flaps.aft.at - CM, S_FF = CFG.flaps.fwd.at - CM;
+const S_T = -CFG.engines.thrustArm;
+const PIN_OUT = CFG.ship.pinOut;
+const A_SIDE = L * D, A_AX = Math.PI * R * R;
+const FUEL0 = CFG.ship.fuel, DRY = CFG.ship.massAtIgnition - CFG.ship.fuel;
+const T1 = CFG.engines.thrust;                                   // кН на двигатель
+const MDOT1 = T1 / (CFG.engines.isp * G);                        // т/с на двигатель при 100 %
+const ARM_H = CFG.tower.armHeight, ARM_T = CFG.tower.armThickness;
+const RAIL = ARM_H + ARM_T / 2;
+const ARM_OPEN = CFG.tower.gapOpen / 2, ARM_CLOSED = CFG.tower.gapClosed / 2, ARM_LEN = CFG.tower.armLength;
+const TOWER_HW = CFG.tower.halfWidth, TOWER_H = CFG.tower.height;
+const MOUNT = { x0: -CFG.tower.mountHalfWidth, x1: CFG.tower.mountHalfWidth, y0: 0, y1: CFG.tower.mountHeight };
+const IGN_LO = RAIL + CFG.ignitionAboveArms[0], IGN_HI = RAIL + CFG.ignitionAboveArms[1];
+const ENG_X = [0, -2.4, 2.4];                // порядок: центральный гаснет последним
+const DEG = Math.PI / 180;
+
+const $ = id => document.getElementById(id);
+const cv = $('c'), cx = cv.getContext('2d');
+const stage = $('stage'), hud = $('hud'), hintEl = $('hint'), gustEl = $('gust');
+const overlay = $('overlay'), card = $('card'), bFlip = $('bFlip');
+let W = 0, H = 0, DPR = 1, hudH = 0;
+const touchUI = () => getComputedStyle($('pad')).display !== 'none';
+
+function resize() {
+  const r = stage.getBoundingClientRect();
+  W = r.width; H = r.height; DPR = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.max(1, Math.round(W * DPR)); cv.height = Math.max(1, Math.round(H * DPR));
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  hudH = hud.offsetHeight;
+  hintEl.style.top = (hudH + 6) + 'px';
+  gustEl.style.top = (hudH + 46) + 'px';
+}
+window.addEventListener('resize', resize);
+
+// ---------- утилиты ----------
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const rad = d => d * DEG;
+const approach = (v, t, s) => v < t ? Math.min(t, v + s) : Math.max(t, v - s);
+const sstep = p => p * p * (3 - 2 * p);
+const num = (v, dg = 0) => { const t = Math.abs(v).toFixed(dg); return (v < 0 && +t !== 0 ? '−' : '') + t.replace('.', ','); };
+function hash(i, j) {
+  let n = (i * 374761393 + j * 668265263) | 0;
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+
+// ---------- ввод ----------
+const K = { l: 0, r: 0, u: 0, d: 0 };
+const keyMap = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd' };
+window.addEventListener('keydown', e => {
+  if (keyMap[e.code]) { K[keyMap[e.code]] = 1; e.preventDefault(); return; }
+  if (e.repeat) return;
+  if (e.code === 'Space' || e.code === 'KeyF') { e.preventDefault(); if (mode === 'play') flip(); else start(gameMode); }
+  else if (e.code === 'KeyQ') engines(-1);
+  else if (e.code === 'KeyE') engines(+1);
+  else if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') engines(+e.code.slice(5) - (S ? S.eng : 0));
+  else if (e.code === 'KeyR') { e.preventDefault(); start(gameMode); }
+  else if (e.code === 'Enter' && mode !== 'play') { e.preventDefault(); start(gameMode); }
+});
+window.addEventListener('keyup', e => { if (keyMap[e.code]) K[keyMap[e.code]] = 0; });
+window.addEventListener('blur', () => { K.l = K.r = K.u = K.d = 0; });
+document.querySelectorAll('#pad button[data-k]').forEach(b => {
+  const k = b.dataset.k;
+  const on = e => { e.preventDefault(); K[k] = 1; b.classList.add('on'); try { b.setPointerCapture(e.pointerId); } catch (_) {} };
+  const off = () => { K[k] = 0; b.classList.remove('on'); };
+  b.addEventListener('pointerdown', on);
+  b.addEventListener('pointerup', off);
+  b.addEventListener('pointercancel', off);
+  b.addEventListener('lostpointercapture', off);
+});
+const tap = (el, fn) => el.addEventListener('pointerdown', e => { e.preventDefault(); if (mode === 'play') fn(); });
+tap(bFlip, () => flip());
+tap($('bEngDn'), () => engines(-1));
+tap($('bEngUp'), () => engines(+1));
+$('bRestart').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); start(gameMode); });
+document.addEventListener('contextmenu', e => e.preventDefault());
+
+// ---------- мир ----------
+let clouds = [];
+function makeClouds() {
+  clouds = [];
+  for (let i = 0; i < 50; i++) {
+    const c = { x: rnd(-1500, 1500), y: rnd(350, 3400), w: rnd(90, 260), puffs: [] };
+    const n = 4 + (Math.random() * 5 | 0);
+    for (let k = 0; k < n; k++) c.puffs.push({ dx: rnd(-.5, .5) * c.w, dy: rnd(-.12, .12) * c.w, r: rnd(.18, .34) * c.w });
+    c.a = rnd(.35, .75);
+    clouds.push(c);
+  }
+}
+
+// ---------- состояние ----------
+let mode = 'menu', gameMode = 'easy', S = null, parts = [];
+let TOL = null;
+let cam = { x: 0, y: CFG.start.altitude, V: 260, off: 0 };
+const best = { easy: 0, real: 0 };
+try { best.easy = +localStorage.getItem('catchBest_easy') || 0; best.real = +localStorage.getItem('catchBest_real') || 0; } catch (_) {}
+
+function tolerances(m) {
+  const c = CFG.catchReal, f = m === 'real' ? 1 : CFG.easyFactor;
+  return { offset: m === 'real' ? c.offset : CFG.easyOffset, fuel: m === 'real' ? FUEL0 : FUEL0 * CFG.easyFuelFactor, pinWindow: c.pinWindow * f, vyOk: c.vyOk * f, vyHard: c.vyHard * f, vx: c.vx * f, tilt: c.tilt * f };
+}
+
+function newState() {
+  const side = Math.random() < .5 ? -1 : 1;
+  return {
+    phase: 'belly', t: 0,
+    x: side * rnd(CFG.start.offset[0], CFG.start.offset[1]), y: CFG.start.altitude,
+    vx: (Math.random() < .5 ? -1 : 1) * rnd(CFG.start.vx[0], CFG.start.vx[1]), vy: CFG.start.vy,
+    th: 90, om: 0,                                   // наклон от вертикали (°, по часовой), угловая скорость (рад/с)
+    uf: CFG.flaps.fwd.trim, ua: CFG.flaps.aft.trim,  // раскрытие закрылков
+    gim: 0, thr: 0, eng: 0, e: [0, 0, 0], fuel: TOL ? TOL.fuel : FUEL0,
+    w10: (Math.random() < .5 ? -1 : 1) * rnd(CFG.wind.w10[0], CFG.wind.w10[1]),
+    g: 0, gFrom: 0, gTo: 0, gT: 0, gDur: 1, gNote: 0,
+    arms: 0, armsTarget: 0, armMsg: 0,
+    ignT: null, engLog: [],
+    ct: 0, bt: 0, flash: 0, shake: 0, reason: '', stats: null, fuelOutAt: 0, maxG: 0, wind: 0,
+  };
+}
+
+function start(m) {
+  gameMode = m || gameMode;
+  TOL = tolerances(gameMode);
+  S = newState(); parts = []; makeClouds();
+  cam = { x: S.x, y: S.y, V: 260, off: -0.14 * 260 };
+  overlay.classList.add('hide');
+  $('bRestart').hidden = false;
+  mode = 'play';
+}
+
+function flip() {
+  if (!S || S.phase !== 'belly') return;
+  S.phase = 'flip'; S.ignT = S.t;
+  S.eng = CFG.engines.count; S.thr = CFG.engines.ignitionThrottle;
+  S.engLog.push([0, S.eng]);
+}
+function engines(dn) {
+  if (!S || (S.phase !== 'flip' && S.phase !== 'burn') || !dn) return;
+  const n = clamp(S.eng + dn, 0, CFG.engines.count);
+  if (n !== S.eng) { S.eng = n; S.engLog.push([S.t - S.ignT, n]); }
+}
+
+// ---------- геометрия корпуса ----------
+const axis = th => [Math.sin(rad(th)), Math.cos(rad(th))];
+function at(st, s) { const [ux, uy] = axis(st.th); return [st.x + ux * s, st.y + uy * s]; }
+function hullPoints(st, withPins) {
+  const [ux, uy] = axis(st.th), nx = uy, ny = -ux;
+  const pts = [];
+  for (let k = 0; k <= L + 0.01; k += 2.6) {         // k — расстояние от днища
+    const s = k - CM;
+    const r = k > L - NOSE ? R * Math.sqrt(Math.max(0, (L - k) / NOSE)) : R;
+    pts.push([st.x + ux * s + nx * r, st.y + uy * s + ny * r]);
+    pts.push([st.x + ux * s - nx * r, st.y + uy * s - ny * r]);
+  }
+  if (withPins) for (const sg of [-1, 1]) {
+    const r = R + PIN_OUT;
+    pts.push([st.x + ux * S_PIN + sg * nx * r, st.y + uy * S_PIN + sg * ny * r]);
+  }
+  return pts;
+}
+function lowestAlt(st) {
+  const [gx, gy] = at(st, S_GEO);
+  const a = rad(st.th);
+  return gy - (L / 2 * Math.abs(Math.cos(a)) + R * Math.abs(Math.sin(a)));
+}
+const pinPos = st => at(st, S_PIN);
+function inRect(p, x0, x1, y0, y1) { return p[0] > x0 && p[0] < x1 && p[1] > y0 && p[1] < y1; }
+const armInner = st => ARM_OPEN + (ARM_CLOSED - ARM_OPEN) * sstep(st.arms);
+// где корпус пересекает уровень рук (x оси корабля на высоте рук)
+const hullXAtArms = st => st.x + Math.tan(rad(st.th)) * (ARM_H - st.y);
+
+// ---------- физика ----------
+const rho = h => CFG.atmosphere.rho0 * Math.exp(-Math.max(0, h) / CFG.atmosphere.scaleHeight);
+function windAt(st, z) {
+  return st.w10 * Math.pow(Math.max(z, 1) / 10, CFG.wind.profileExp) + st.g;
+}
+
+function forces(st) {
+  // возвращает ускорения и угловое ускорение в текущем состоянии
+  const m = (DRY + st.fuel) * 1000;                       // кг
+  const I = m * (3 * R * R + L * L) / 12;
+  const [ux, uy] = axis(st.th), nx = uy, ny = -ux;        // n — правая нормаль к оси
+  const r_ = rho(st.y);
+  const w = windAt(st, st.y);
+  const vrx = st.vx - w, vry = st.vy;                     // скорость относительно воздуха
+  const V = Math.hypot(vrx, vry);
+  const va = vrx * ux + vry * uy, vn = vrx * nx + vry * ny;
+  const AE = CFG.aero, FL = CFG.flaps;
+  // продольная сила (вдоль оси)
+  const cdA = va < 0 ? AE.cdTail : AE.cdNose;
+  const Fa = -Math.sign(va) * 0.5 * r_ * cdA * A_AX * va * va;
+  // поперечные силы: корпус и закрылки
+  const qn = 0.5 * r_ * vn * vn, sn = -Math.sign(vn);
+  const Fh = sn * qn * AE.cdHullSide * A_SIDE;
+  const Ffa = sn * qn * FL.cl * FL.aft.area * st.ua;
+  const Ffw = sn * qn * FL.cl * FL.fwd.area * st.uf;
+  // тяга
+  let T = 0;
+  if (st.fuel > 0) for (let i = 0; i < 3; i++) T += st.e[i] * st.thr * T1 * 1000;   // Н
+  const tx = Math.sin(rad(st.th + st.gim)), ty = Math.cos(rad(st.th + st.gim));
+  const Fn = Fh + Ffa + Ffw;
+  const lift = st.phase === 'belly' && gameMode === 'easy' ? (st.steer || 0) * CFG.control.easyBellyLift * m * G : 0;
+  const Fx = Fa * ux + Fn * nx + T * tx + lift;
+  const Fy = Fa * uy + Fn * ny + T * ty - m * G;
+  // момент по часовой: поперечная сила F в точке s даёт s·F; тяга даёт S_T·T·sin(δ)
+  const damp = r_ * V * AE.pitchDamping * D * L * L * L / 12;
+  const tq = S_CP * Fh + S_FA * Ffa + S_FF * Ffw + S_T * T * Math.sin(rad(st.gim)) * TQ_GAIN() - damp * st.om;
+  return { ax: Fx / m, ay: Fy / m, al: tq / I, I, m, T, qn, sn, vn, w, V };
+}
+
+// «Обычный» режим: момент от сопел усилен (игровое допущение)
+function TQ_GAIN() { return gameMode === 'easy' ? CFG.control.easyTorqueGain : 1; }
+
+// бортовой автопилот: держит заданный наклон закрылками или качанием сопел
+function autopilot(st, dt, f, steerOverride) {
+  const C = CFG.control, FL = CFG.flaps, EN = CFG.engines;
+  const steer = steerOverride === undefined ? K.r - K.l : steerOverride;
+  st.steer = steer;
+  let target, wn;
+  if (st.phase === 'belly') { target = 90 + steer * (gameMode === 'easy' ? C.easyBellyTiltMax : C.bellyTiltMax); wn = C.bellyWn; }
+  else if (st.phase === 'flip') { target = 0; wn = C.flipWn; }
+  else {
+    target = steer * C.tiltMax; wn = C.burnWn;
+    if (gameMode === 'easy') {
+      const a = f.T / f.m;
+      st.vxT = steer ? clamp((st.vxT || 0) + steer * C.easyVxRate * dt, -C.easyVx, C.easyVx) : approach(st.vxT || 0, 0, C.easyVxRate * dt);
+      target = a > 1 ? clamp(Math.atan(-C.driftHoldGain * (st.vx - st.vxT) / a) / DEG, -C.tiltMax, C.tiltMax) : 0;
+    }
+  }
+  const err = rad(target - st.th);
+  let tqDes = f.I * (wn * wn * err - 2 * C.zeta * wn * st.om);
+  if (st.phase !== 'belly' && f.T > 1) {
+    // момент от сопел ограничен: задаём угловую скорость, с которой ещё успеем затормозить вращение
+    // на одном двигателе момента мало — автопилот поворачивает мягче, иначе сопло надолго уходит в упор
+    // и его боковая тяга толкает корабль в обратную сторону
+    const aMax = Math.abs(S_T) * f.T * Math.sin(rad(EN.gimbalMax)) * TQ_GAIN() / f.I;
+    const w = Math.min(wn, 1.8 * Math.sqrt(aMax));
+    const wDes = Math.sign(err) * Math.min(Math.sqrt(2 * 0.5 * aMax * Math.abs(err)), w * Math.abs(err));
+    tqDes = f.I * 2 * w * (wDes - st.om);
+  }
+  let ufT = 0, uaT = 0, gimT = 0;
+  if (st.phase === 'belly') {
+    // момент от закрылков сверх балансировки: задние (+) опускают нос, передние (−) поднимают
+    const per = f.qn * FL.cl * (Math.abs(S_FA) * FL.aft.area * 0.4 + S_FF * FL.fwd.area * 0.5);
+    const c = per > 1 ? clamp(tqDes / per, -1, 1) : 0;
+    uaT = FL.aft.trim + 0.4 * c; ufT = FL.fwd.trim - 0.5 * c;
+  } else {
+    if (st.phase === 'flip' && Math.abs(st.th) > 40) { ufT = 1; uaT = 0; }   // задние сложены, передние держат нос
+    const T = f.T;
+    // момент от сопла: S_T·T·sin(δ), откуда δ = asin(момент / (S_T·T))
+    if (T > 1) gimT = clamp(Math.asin(clamp(tqDes / (S_T * T * TQ_GAIN()), -1, 1)) / DEG, -EN.gimbalMax, EN.gimbalMax);
+  }
+  st.uf = approach(st.uf, ufT, FL.rate * dt);
+  st.ua = approach(st.ua, uaT, FL.rate * dt);
+  st.gim = approach(st.gim, gimT, EN.gimbalRate * dt);
+}
+
+// прогноз: где корабль остановится, если поджечь двигатели сейчас и дальше идти по графику Flight 15
+// (3 двигателя 5 с, потом 2, газ как при поджиге, ◀ ▶ отпущены). Считается той же физикой, грубым шагом.
+function predictStop(src) {
+  const p = { ...src, steer: 0, vxT: 0, e: [0, 0, 0], phase: 'flip', eng: CFG.engines.count, thr: CFG.engines.ignitionThrottle, g: 0 };
+  const EN = CFG.engines, dt = 1 / 30;
+  for (let t = 0; t < 16; t += dt) {
+    if (t >= 5 && p.eng === 3) p.eng = 2;
+    for (let i = 0; i < 3; i++) p.e[i] = i < p.eng ? Math.min(1, p.e[i] + dt / EN.spoolUp) : Math.max(0, p.e[i] - dt / EN.spoolDown);
+    let f = forces(p); autopilot(p, dt, f, 0); f = forces(p);
+    p.vx += f.ax * dt; p.vy += f.ay * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    p.om += f.al * dt; p.th += p.om * dt / DEG;
+    const fl = (p.e[0] + p.e[1] + p.e[2]) * p.thr * MDOT1; p.fuel = Math.max(0, p.fuel - fl * dt);
+    if (p.phase === 'flip' && Math.abs(p.th) < 10 && t > 1.5) p.phase = 'burn';
+    if (p.phase === 'burn' && p.vy > -1) break;      // почти остановился: дальше игрок переходит на один двигатель
+    // днище дошло до уровня рук (пины ~40 м над рельсами) — дальше корабль должен быть уже над центром
+    if (p.phase === 'burn' && p.y + Math.cos(rad(p.th)) * S_PIN - RAIL < CFG.ship.pinHeight - 2) break;
+  }
+  return { x: p.x + Math.sin(rad(p.th)) * S_PIN, y: p.y + Math.cos(rad(p.th)) * S_PIN, vy: p.vy };
+}
+
+function step(dt) {
+  const st = S;
+  st.t += dt;
+  if (st.flash > 0) st.flash = Math.max(0, st.flash - dt * 2.5);
+  if (st.shake > 0) st.shake = Math.max(0, st.shake - dt * 2);
+  if (st.armMsg > 0) st.armMsg -= dt;
+
+  if (st.phase === 'caught') { stepCaught(dt); return; }
+  if (st.phase === 'boom') { st.bt += dt; if (st.bt > 2.4 && mode === 'play') finish(); return; }
+
+  // порывы: плавный переход к новому случайному значению за 2–5 с
+  st.gT += dt;
+  if (st.gT >= st.gDur) {
+    st.gFrom = st.g; st.gT = 0; st.gDur = rnd(CFG.wind.gustChange[0], CFG.wind.gustChange[1]);
+    st.gTo = (Math.random() < .5 ? -1 : 1) * rnd(CFG.wind.gust[0], CFG.wind.gust[1]) * (Math.random() < .35 ? 1 : 0.5);
+    if (Math.abs(st.gTo - st.gFrom) > 2) st.gNote = 1.6;
+  }
+  st.g = st.gFrom + (st.gTo - st.gFrom) * sstep(st.gT / st.gDur);
+  st.gNote -= dt;
+
+  // двигатели: выход на тягу и выключение
+  const EN = CFG.engines;
+  if (st.phase !== 'belly') {
+    if (st.fuel > 0) st.thr = clamp(st.thr + (K.u - K.d) * EN.throttleRate * dt, EN.minThrottle, 1);
+    for (let i = 0; i < 3; i++) {
+      const on = i < st.eng && st.fuel > 0;
+      st.e[i] = on ? Math.min(1, st.e[i] + dt / EN.spoolUp) : Math.max(0, st.e[i] - dt / EN.spoolDown);
+    }
+  }
+
+  let f = forces(st);
+  autopilot(st, dt, f);
+  f = forces(st);
+  st.vx += f.ax * dt; st.vy += f.ay * dt;
+  st.x += st.vx * dt; st.y += st.vy * dt;
+  st.om += f.al * dt; st.th += st.om * dt / DEG;
+  st.wind = f.w;
+  st.maxG = Math.max(st.maxG, Math.hypot(f.ax, f.ay + G) / G);
+  // топливо
+  let flow = 0;
+  for (let i = 0; i < 3; i++) flow += st.e[i] * st.thr * MDOT1;
+  if (st.fuel > 0) { st.fuel = Math.max(0, st.fuel - flow * dt); if (st.fuel === 0) st.fuelOutAt = st.t; }
+
+  if (st.phase === 'flip' && Math.abs(st.th) < 10 && st.t - st.ignT > 1.5) st.phase = 'burn';
+
+  // пыль от струи у земли
+  const tot = st.e[0] + st.e[1] + st.e[2];
+  if (tot > 0.2 && st.phase !== 'belly') {
+    const base = lowestAlt(st);
+    const gy = Math.abs(st.x) < 15 ? MOUNT.y1 : 0;
+    if (base - gy < 60 && Math.random() < dt * 25 * tot * st.thr)
+      for (const sg of [-1, 1]) parts.push({ t: 'dust', x: st.x, y: gy + 1, vx: sg * rnd(15, 35), vy: rnd(1, 5), life: 0, max: rnd(1.2, 2.2), r: rnd(3, 6) });
+  }
+
+  if (st.phase === 'belly' && (st.predT = (st.predT || 0) - dt) <= 0) { st.pred = predictStop(st); st.predT = 0.1; }
+  if (st.phase !== 'belly') st.pred = null;
+
+  stepArms(dt);
+  if (st.phase === 'boom' || st.phase === 'caught') return;
+
+  // столкновения
+  const pts = hullPoints(st, st.arms < 0.02);
+  const inner = armInner(st);
+  const yb0 = ARM_H - ARM_T / 2, yb1 = ARM_H + ARM_T / 2;
+  for (const p of pts) {
+    if (st.arms < 0.02 && (inRect(p, -inner - ARM_LEN, -inner, yb0, yb1) || inRect(p, inner, inner + ARM_LEN, yb0, yb1))) return boom('Корабль задел руку башни.');
+    if (inRect(p, MOUNT.x0, MOUNT.x1, MOUNT.y0, MOUNT.y1)) return boom(groundReason(st, 'разбился о стартовый стол'));
+    if (p[1] <= 0) return boom(groundReason(st, 'упал на землю'));
+  }
+}
+
+// руки: смыкание, центровка, касание пинами
+function stepArms(dt) {
+  const st = S;
+  const [px, py] = pinPos(st);
+  const h = py - RAIL;                       // высота пинов над рельсами
+  const xa = hullXAtArms(st);                // ось корабля на уровне рук
+  const near = st.y + (L - CM) > ARM_H && lowestAlt(st) < ARM_H;   // корпус перекрывает уровень рук
+  const ok = Math.abs(xa) <= TOL.offset && Math.abs(st.vx) <= TOL.vx && Math.abs(st.th) <= TOL.tilt && Math.abs(st.vy) <= TOL.vyHard;
+  // команда на смыкание: пины в окне над рельсами, параметры в допуске
+  if (st.armsTarget === 0 && st.phase === 'burn' && h >= 0 && h <= 2 * TOL.pinWindow && ok) { st.armsTarget = 1; st.trigX = xa; }
+  // пины проскочили рельсы до смыкания или корабль ушёл вверх — руки раскрываются
+  if (st.armsTarget === 1 && st.arms < 1 && h < 0) { st.armsTarget = 0; st.armMsg = 2; st.armWhy = 'Руки не успели: пины проскочили рельсы'; }
+  if (st.armsTarget === 1 && h > 2 * TOL.pinWindow + 4) { st.armsTarget = 0; st.armMsg = 2; st.armWhy = 'Корабль ушёл вверх — руки раскрываются'; }
+  st.arms = approach(st.arms, st.armsTarget, dt / CFG.tower.closeTime);
+
+  if (st.arms > 0.02 && near) {
+    const inner = armInner(st);
+    const gap = Math.abs(xa) + R - inner;
+    if (gap > 0) {
+      if (Math.abs(xa) > TOL.offset + 0.5) return boom('Руки ударили по корпусу: корабль слишком далеко от центра.');
+      st.x -= Math.sign(xa) * gap; st.vx *= 0.5;   // руки центруют корабль
+    }
+  }
+  // касание рельсов пинами
+  if (st.arms >= 1 && h <= 0 && h > -1.5) contact();
+}
+
+function contact() {
+  const st = S;
+  const [px] = pinPos(st);
+  const vy = Math.abs(st.vy), vx = Math.abs(st.vx), th = Math.abs(st.th);
+  if (th > TOL.tilt) return boom(`Наклон ${num(st.th, 1)}° — один пин встал на рельс раньше, корабль сорвался.`);
+  if (vx > TOL.vx) return boom(`Боковая скорость ${num(st.vx, 1)} м/с — корабль соскользнул с рельсов.`);
+  if (vy > TOL.vyHard) return boom(`Удар о рельсы на ${num(vy, 1)} м/с — амортизаторы не выдержали.`);
+  st.phase = 'caught'; st.ct = 0;
+  st.stats = { x: st.trigX || 0, vy: st.vy, vx: st.vx, th: st.th, fuel: st.fuel, hard: vy > TOL.vyOk, t: st.t - st.ignT };
+  st.swing = clamp(st.vx * 4 + st.th, -6, 6) || 1.2;
+  st.e = [0, 0, 0]; st.eng = 0; st.thr = 0;     // двигатель гаснет по контакту
+  for (let i = 0; i < 26; i++) parts.push({ t: 'steam', x: st.x + rnd(-6, 6), y: lowestAlt(st) + rnd(0, 6), vx: rnd(-6, 6), vy: rnd(-2, 4), life: 0, max: rnd(1.5, 3), r: rnd(3, 6) });
+}
+
+function stepCaught(dt) {
+  const st = S;
+  st.ct += dt;
+  st.arms = 1;
+  // висит на пинах как маятник: небольшое затухающее раскачивание
+  st.th = st.swing * Math.exp(-st.ct / 1.6) * Math.cos(st.ct * 2 * Math.PI / 4.5);
+  const [ux, uy] = axis(st.th);
+  st.x += (0 - (st.x + ux * S_PIN)) * Math.min(1, dt * 4);
+  st.y = RAIL - uy * S_PIN;
+  st.vx = st.vy = 0; st.om = 0;
+  if (st.ct > 2.6 && mode === 'play') finish();
+}
+
+function groundReason(st, tail) {
+  if (st.phase === 'belly') return `Поджига не было — корабль ${tail} плашмя.`;
+  if (st.fuelOutAt) return `Кончилось топливо, корабль ${tail}.`;
+  if (Math.abs(st.x) > 60) return `Корабль ${tail} в ${num(Math.abs(st.x))} м от башни.`;
+  return `Корабль прошёл мимо рук на ${num(Math.abs(st.vy), 1)} м/с и ${tail}.`;
+}
+
+function boom(reason) {
+  const st = S;
+  if (st.phase === 'boom') return;
+  st.phase = 'boom'; st.reason = reason; st.bt = 0; st.flash = 1; st.shake = 1; st.thr = 0; st.e = [0, 0, 0];
+  const pts = hullPoints(st, false);
+  for (let i = 0; i < 70; i++) {
+    const p = pts[(Math.random() * pts.length) | 0];
+    const a = rnd(0, Math.PI * 2), v = rnd(4, 30);
+    parts.push({ t: 'fire', x: p[0], y: p[1], vx: Math.cos(a) * v + st.vx * .2, vy: Math.sin(a) * v + 4, life: 0, max: rnd(.5, 1.4), r: rnd(3, 7), g: rnd(8, 16) });
+  }
+  for (let i = 0; i < 40; i++) {
+    const p = pts[(Math.random() * pts.length) | 0];
+    parts.push({ t: 'smoke', x: p[0] + rnd(-4, 4), y: p[1] + rnd(-4, 4), vx: rnd(-6, 6), vy: rnd(2, 10), life: -rnd(0, .5), max: rnd(2.2, 3.4), r: rnd(5, 9) });
+  }
+  for (let i = 0; i < 36; i++) {
+    const p = pts[(Math.random() * pts.length) | 0];
+    const a = rnd(0, Math.PI * 2), v = rnd(10, 45);
+    parts.push({ t: 'deb', x: p[0], y: p[1], vx: Math.cos(a) * v, vy: Math.abs(Math.sin(a)) * v, life: 0, max: rnd(1.6, 2.6), r: rnd(.6, 2.2), rot: rnd(0, 6), vr: rnd(-12, 12) });
+  }
+}
+
+function stepParts(dt) {
+  for (const p of parts) {
+    p.life += dt;
+    if (p.life < 0) continue;
+    if (p.t === 'deb') { p.vy -= G * dt; p.rot += p.vr * dt; if (p.y < 0) { p.y = 0; p.vy *= -.3; p.vx *= .6; } }
+    else if (p.t === 'fire') { p.vx *= 1 - dt * 2; p.vy = p.vy * (1 - dt * 2) + 3 * dt; p.r += p.g * dt; }
+    else if (p.t === 'smoke') { p.vx *= 1 - dt; p.vy = p.vy * (1 - dt) + 2 * dt; p.r += 6 * dt; }
+    else if (p.t === 'dust') { p.vx *= 1 - dt * 1.2; p.vy += 1.5 * dt; p.r += 7 * dt; }
+    else if (p.t === 'steam') { p.vx *= 1 - dt; p.vy += 3 * dt; p.r += 5 * dt; }
+    p.x += p.vx * dt; p.y += p.vy * dt;
+  }
+  parts = parts.filter(p => p.life < p.max);
+}
+
+// ---------- итог ----------
+const modeName = m => m === 'real' ? 'Реализм' : 'Обычный';
+function engTiming(st) {
+  return st.engLog.map(([t, n]) => `${n} — с ${num(Math.max(0, t), 1)} с`).join(', ');
+}
+function finish() {
+  mode = 'end';
+  const st = S;
+  let html;
+  if (st.phase === 'caught') {
+    const s = st.stats, SC = CFG.score;
+    const acc = Math.round(SC.accuracy * clamp(1 - Math.abs(s.x) / TOL.offset, 0, 1));
+    let soft = SC.softVy * clamp(1 - Math.abs(s.vy) / TOL.vyHard, 0, 1) + SC.softVx * clamp(1 - Math.abs(s.vx) / TOL.vx, 0, 1) + SC.softTilt * clamp(1 - Math.abs(s.th) / TOL.tilt, 0, 1);
+    if (s.hard) soft *= SC.hardPenalty;
+    soft = Math.round(soft);
+    const fuel = Math.round(s.fuel * SC.perTonFuel);
+    const total = acc + soft + fuel;
+    const isBest = total > best[gameMode];
+    if (isBest) { best[gameMode] = total; try { localStorage.setItem('catchBest_' + gameMode, String(total)); } catch (_) {} }
+    html = `<h1 class="${s.hard ? 'warn' : 'ok'}">${s.hard ? 'Жёстко, но поймали' : 'Пойман!'}</h1>
+      <p>${s.hard ? 'Амортизаторы рельсов отработали на пределе, корабль висит на пинах.' : 'Руки сомкнулись, пины легли на рельсы, двигатель погас по контакту.'}</p>
+      <ul>
+        <li><i>Промах от центра</i><span>${num(s.x, 1)} м</span></li>
+        <li><i>Скорость касания</i><span>${num(s.vy, 1)} м/с</span></li>
+        <li><i>Боковая скорость</i><span>${num(s.vx, 2)} м/с</span></li>
+        <li><i>Наклон</i><span>${num(s.th, 1)}°</span></li>
+        <li><i>Осталось топлива</i><span>${num(s.fuel, 1)} т</span></li>
+        <li><i>От поджига до поимки</i><span>${num(s.t, 1)} с</span></li>
+        <li><i>Двигатели</i><span>${engTiming(st)}</span></li>
+      </ul>
+      <ul>
+        <li><i>Точность</i><span>${acc}</span></li>
+        <li><i>Мягкость</i><span>${soft}</span></li>
+        <li><i>Топливо</i><span>${fuel}</span></li>
+        <li class="tot"><i style="color:#fff">Очки (${modeName(gameMode)})</i><span>${total}</span></li>
+      </ul>
+      <p style="color:var(--muted)">Flight 15: поджиг трёх, 3→2 на +5 с, 2→1 на +11 с, поимка на +12 с.</p>
+      <p>${isBest ? 'Новый рекорд!' : 'Рекорд: ' + best[gameMode]}</p>`;
+  } else {
+    html = `<h1 class="bad">Авария</h1>
+      <p>${st.reason}</p>
+      <p style="color:var(--muted)">Подсказка: поджиг на ${num(IGN_LO)}–${num(IGN_HI)} м. Три двигателя тормозят даже на минимуме слишком сильно — гаси их: 3→2→1. Над руками почти зависни: не быстрее ${num(TOL.vyOk)} м/с вниз, ${num(TOL.vx, 1)} м/с вбок, наклон до ${num(TOL.tilt)}°.</p>
+      ${best[gameMode] ? `<p>Рекорд (${modeName(gameMode)}): ${best[gameMode]}</p>` : ''}`;
+  }
+  card.innerHTML = html + `<button class="btn" id="again">Ещё раз</button><button class="btn alt" id="toMenu">Сменить режим</button>`;
+  $('again').addEventListener('click', () => start(gameMode));
+  $('toMenu').addEventListener('click', menu);
+  overlay.classList.remove('hide');
+}
+
+function menu() {
+  mode = 'menu';
+  const e = tolerances('easy'), r = tolerances('real');
+  card.innerHTML = `<h1>Поймай корабль</h1>
+    <p>Корабль возвращается с орбиты и падает плашмя. В полукилометре над башней он зажигает три двигателя, встаёт вертикально, гасит двигатели по одному и зависает между руками башни. Руки смыкаются и ловят его за пины.</p>
+    <div class="keys">
+      <div><kbd>A</kbd><kbd>D</kbd> — закрылки плашмя, потом наклон</div>
+      <div><kbd>Пробел</kbd> — поджиг и переворот</div>
+      <div><kbd>W</kbd><kbd>S</kbd> — газ, <kbd>Q</kbd><kbd>E</kbd> или <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> — число двигателей</div>
+      <div><kbd>R</kbd> — начать заново в любой момент</div>
+      <div>Красный <b style="color:#ff3b30">✕</b> внизу — где башня.</div>
+      <div>На телефоне — кнопки внизу экрана.</div>
+    </div>
+    <button class="btn" id="goEasy">Обычный<small>вбок ±${num(e.offset)} м, касание ≤${num(e.vyOk)} м/с, наклон ≤${num(e.tilt)}°</small></button>
+    <button class="btn alt" id="goReal">Реализм<small>вбок ±${num(r.offset)} м, касание ≤${num(r.vyOk)} м/с, наклон ≤${num(r.tilt)}°</small></button>`;
+  $('goEasy').addEventListener('click', () => start('easy'));
+  $('goReal').addEventListener('click', () => start('real'));
+  overlay.classList.remove('hide');
+}
+
+// ---------- HUD ----------
+const hEl = { alt: $('hAlt'), vy: $('hVy'), vx: $('hVx'), th: $('hTh'), fuel: $('hFuel'), thr: $('hThr'), wind: $('hWind'), arm: $('hArm') };
+let lastHint = '';
+function setCell(el, txt, cls) { if (el.textContent !== txt) el.textContent = txt; const c = cls || ''; if (el.className !== c) el.className = c; }
+function updHUD() {
+  const st = S; if (!st || !TOL) return;
+  const powered = st.phase === 'burn' || st.phase === 'flip';
+  const alt = Math.max(0, lowestAlt(st));
+  setCell(hEl.alt, num(alt) + ' м', st.phase === 'belly' && alt < IGN_LO - 60 ? 'bad' : st.phase === 'belly' && alt < IGN_HI ? 'warn' : '');
+  setCell(hEl.vy, num(st.vy, Math.abs(st.vy) < 10 ? 1 : 0) + ' м/с', powered ? (Math.abs(st.vy) <= TOL.vyOk ? 'ok' : '') : '');
+  setCell(hEl.vx, num(st.vx, Math.abs(st.vx) < 10 ? 1 : 0) + ' м/с', powered ? (Math.abs(st.vx) <= TOL.vx ? 'ok' : '') : '');
+  setCell(hEl.th, num(st.th, Math.abs(st.th) < 10 ? 1 : 0) + '°', powered ? (Math.abs(st.th) <= TOL.tilt ? 'ok' : '') : '');
+  setCell(hEl.fuel, num(st.fuel, 1) + ' т', st.fuel < 2 ? 'bad' : st.fuel < 4 ? 'warn' : '');
+  setCell(hEl.thr, st.phase === 'belly' || st.eng === 0 && st.e.every(v => v === 0) ? 'выкл' : `${st.eng} × ${Math.round(st.thr * 100)} %`, '');
+  const w = st.wind || 0;
+  setCell(hEl.wind, (w > 0.05 ? '→ ' : w < -0.05 ? '← ' : '') + num(Math.abs(w), 1) + ' м/с', st.gNote > 0 ? 'warn' : '');
+  const lowPhase = powered || st.phase === 'caught';
+  if (lowPhase) setCell(hEl.arm, num(pinPos(st)[1] - RAIL, 1) + ' м', '');
+  else setCell(hEl.arm, num(Math.abs(st.x)) + ' м', '');
+  const lbl = lowPhase ? 'Пины над рельсами' : 'До башни';
+  if ($('hArmL').textContent !== lbl) $('hArmL').textContent = lbl;
+
+  const t = touchUI();
+  const kLR = t ? '◀ ▶' : 'A / D', kUD = t ? '«Газ ±»' : 'W / S', kE = t ? '«Двиг. ±»' : 'Q / E';
+  let h = '';
+  if (st.phase === 'belly') {
+    let pr = '';
+    if (st.pred) {
+      const dx = st.pred.x, side = dx > 0 ? 'правее' : 'левее';
+      pr = Math.abs(dx) < 15 ? '<br><b style="color:#5ee08a">Прогноз ✕: придёшь к башне</b>' : `<br>Прогноз ✕ на карте: придёшь в ${num(Math.abs(dx))} м ${side} башни`;
+      if (st.pred.vy < -15) pr += ` <b style="color:#ff6a5a">на ${num(-st.pred.vy)} м/с — газ!</b>`;
+    }
+    if (alt > IGN_HI) h = `Падение плашмя. ${kLR} — закрылки: своди жёлтый ✕ прогноза на карте с красным ✕ башни.<br>Поджиг на ${num(IGN_LO)}–${num(IGN_HI)} м${pr}`;
+    else if (alt > IGN_LO - 60) h = `<b style="color:#ffcf5a">Пора! ${t ? 'Жми «Переворот»' : 'Жми Пробел'}</b>${pr}`;
+    else h = `<b style="color:#ff6a5a">Поздно! Поджигай!</b>`;
+  } else if (st.phase === 'flip') h = 'Поджиг трёх двигателей, переворот…';
+  else if (st.phase === 'burn') {
+    const hp = pinPos(st)[1] - RAIL;
+    if (st.armMsg > 0) h = `<b style="color:#ffcf5a">${st.armWhy}</b>`;
+    else if (st.arms > 0 && st.arms < 1) h = `<b style="color:#5ee08a">Руки смыкаются — держи корабль!</b>`;
+    else if (st.arms >= 1) h = `Руки сомкнуты. Опускайся на рельсы: ≤${num(TOL.vyOk)} м/с`;
+    else if (hp > 120) h = `Тормози. ${kE} — двигатели 3→2→1, ${kUD} — газ, ${kLR} — наклон`;
+    else if (Math.abs(hullXAtArms(st)) > TOL.offset && hp < 50) h = `<b style="color:#ffcf5a">Зависни и сместись к центру — днище заденет руки</b>`;
+    else h = `Зависни пинами над рельсами: вбок ±${num(TOL.offset)} м, ≤${num(TOL.vx, 1)} м/с, наклон ≤${num(TOL.tilt)}°`;
+  }
+  if (mode === 'menu') h = '';
+  if (h !== lastHint) { hintEl.innerHTML = h; lastHint = h; }
+  gustEl.style.opacity = st.gNote > 0 && (st.phase === 'burn' || st.phase === 'belly') && mode === 'play' ? 1 : 0;
+  gustEl.textContent = st.gTo > st.gFrom ? 'Порыв ветра →' : '← Порыв ветра';
+  bFlip.disabled = st.phase !== 'belly';
+  bFlip.classList.toggle('on', st.phase === 'belly' && alt < IGN_HI);
+  $('bEngDn').disabled = $('bEngUp').disabled = !(st.phase === 'burn' || st.phase === 'flip');
+}
+
+// ---------- рисование ----------
+let s = 1; // пикселей на метр
+const SX = x => W / 2 + (x - cam.x) * s;
+const SY = y => H / 2 - (y - cam.y) * s;
+
+function updCam(dt) {
+  const st = S;
+  const tV = st.phase === 'belly' ? 260 : 220;
+  cam.V += (tV - cam.V) * Math.min(1, dt * 1.5);
+  const visH = Math.max(100, H - hudH * 0.6);
+  s = visH / cam.V;
+  const [gx, gy] = at(st, S_GEO);
+  const tOff = st.phase === 'belly' ? -0.14 * cam.V : -0.02 * cam.V;
+  cam.off += (tOff - cam.off) * Math.min(1, dt * 1.5);
+  const halfV = H / 2 / s;
+  cam.y = Math.max(gy + cam.off, halfV - 12);
+  const near = clamp(1 - (gy - 150) / 350, 0, 1);
+  const tx = gx * (1 - near * 0.35);
+  cam.x = st.phase === 'belly' ? gx : cam.x + (tx - cam.x) * Math.min(1, dt * 3);
+  const halfW = W / 2 / s - 10;
+  if (Math.abs(gx - cam.x) > halfW) cam.x = gx - Math.sign(gx - cam.x) * halfW;
+}
+
+function lerpC(a, b, t) {
+  const pa = a.match(/\w\w/g).map(h => parseInt(h, 16)), pb = b.match(/\w\w/g).map(h => parseInt(h, 16));
+  return 'rgb(' + pa.map((v, i) => Math.round(v + (pb[i] - v) * t)).join(',') + ')';
+}
+
+function drawSky() {
+  const t = clamp(cam.y / 3200, 0, 1);
+  const g = cx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, lerpC('3f77b8', '163e7a', t));
+  g.addColorStop(0.6, lerpC('8fb6dc', '3f78b8', t));
+  g.addColorStop(1, lerpC('f3cfa0', '7fa8d6', t));
+  cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+}
+
+function drawFar() {
+  const gy = SY(0);
+  if (gy > H + 5) return;
+  const par = 0.45;
+  const fx = x => W / 2 + (x - cam.x * par) * s * par;
+  cx.fillStyle = 'rgba(70,92,120,.55)';
+  cx.beginPath(); cx.moveTo(-10, gy);
+  for (let i = -10; i <= W + 30; i += 30) cx.lineTo(i, gy - (6 + 5 * Math.sin(i * 0.013 + 1) + 3 * Math.sin(i * 0.041)) * s * 0.6);
+  cx.lineTo(W + 30, gy); cx.fill();
+  cx.fillStyle = 'rgba(60,72,88,.75)';
+  for (const [x, w, h] of [[-420, 14, 26], [-400, 14, 26], [-380, 14, 30], [-300, 40, 18], [260, 28, 14]]) {
+    cx.fillRect(fx(x), gy - h * s * par, w * s * par, h * s * par);
+  }
+  cx.fillRect(fx(-560), gy - 140 * s * par, 12 * s * par, 140 * s * par);
+}
+
+function drawGround() {
+  const gy = SY(0);
+  if (gy > H + 5) return;
+  const seaX = SX(420);
+  cx.fillStyle = '#c9b48a'; cx.fillRect(0, gy, Math.max(0, Math.min(W, seaX)), H - gy);
+  if (seaX < W) {
+    const g = cx.createLinearGradient(0, gy, 0, H);
+    g.addColorStop(0, '#3d7f9b'); g.addColorStop(1, '#1f4f68');
+    cx.fillStyle = g; cx.fillRect(Math.max(0, seaX), gy, W, H - gy);
+  }
+  cx.fillStyle = '#a99366'; cx.fillRect(0, gy, Math.max(0, Math.min(W, seaX)), Math.max(2, 1.2 * s));
+  cx.fillStyle = '#9a9a96'; cx.fillRect(SX(-60), gy, 120 * s, Math.max(2, 1.5 * s));
+}
+
+function drawClouds() {
+  for (const c of clouds) {
+    const x = SX(c.x), y = SY(c.y);
+    if (x < -c.w * s || x > W + c.w * s || y < -c.w * s || y > H + c.w * s) continue;
+    cx.fillStyle = `rgba(255,255,255,${c.a * 0.55})`;
+    for (const p of c.puffs) { cx.beginPath(); cx.arc(x + p.dx * s, y - p.dy * s, p.r * s, 0, 7); cx.fill(); }
+  }
+}
+
+function drawStreaks() {
+  const st = S;
+  const sp = Math.hypot(st.vx, st.vy);
+  if (sp < 12 || st.phase === 'caught' || st.phase === 'boom') return;
+  const cell = 28, k = 0.07;
+  const x0 = cam.x - W / 2 / s, x1 = cam.x + W / 2 / s, y0 = cam.y - H / 2 / s, y1 = cam.y + H / 2 / s;
+  cx.strokeStyle = `rgba(255,255,255,${clamp((sp - 12) / 70, 0, .45)})`;
+  cx.lineWidth = 1;
+  cx.beginPath();
+  for (let i = Math.floor(x0 / cell); i <= x1 / cell; i++) for (let j = Math.floor(y0 / cell); j <= y1 / cell; j++) {
+    const px = (i + hash(i, j)) * cell, py = (j + hash(j, i + 7)) * cell;
+    if (py < 8) continue;
+    cx.moveTo(SX(px), SY(py)); cx.lineTo(SX(px + st.vx * k), SY(py + st.vy * k));
+  }
+  cx.stroke();
+}
+
+function drawTower() {
+  const x0 = SX(-TOWER_HW), x1 = SX(TOWER_HW), y0 = SY(0), yt = SY(TOWER_H);
+  cx.fillStyle = 'rgba(40,46,54,.35)'; cx.fillRect(x0, yt, x1 - x0, y0 - yt);
+  cx.strokeStyle = '#2d333b'; cx.lineWidth = Math.max(1.5, 1.1 * s);
+  cx.beginPath();
+  for (const x of [-TOWER_HW + .6, -2.6, 2.6, TOWER_HW - .6]) { cx.moveTo(SX(x), y0); cx.lineTo(SX(x), yt); }
+  cx.stroke();
+  cx.lineWidth = Math.max(1, .45 * s);
+  cx.beginPath();
+  for (let y = 0; y < TOWER_H - 1; y += 9) {
+    cx.moveTo(x0, SY(y)); cx.lineTo(x1, SY(y + 9)); cx.moveTo(x1, SY(y)); cx.lineTo(x0, SY(y + 9));
+    cx.moveTo(x0, SY(y)); cx.lineTo(x1, SY(y));
+  }
+  cx.stroke();
+  cx.fillStyle = '#2d333b'; cx.fillRect(x0 - .5 * s, yt - 2 * s, x1 - x0 + s, 2 * s);
+  cx.lineWidth = Math.max(1, .5 * s); cx.beginPath(); cx.moveTo(SX(0), yt); cx.lineTo(SX(0), SY(TOWER_H + 14)); cx.stroke();
+  cx.fillStyle = '#ff3b30'; cx.beginPath(); cx.arc(SX(0), SY(TOWER_H + 14), Math.max(1.5, .6 * s), 0, 7); cx.fill();
+  cx.fillStyle = '#3b424b'; cx.fillRect(SX(-TOWER_HW - 1.5), SY(ARM_H + 4.5), (2 * TOWER_HW + 3) * s, 9 * s);
+  cx.fillStyle = '#545c66'; cx.fillRect(SX(-TOWER_HW - 1.5), SY(ARM_H + 4.5), (2 * TOWER_HW + 3) * s, 1.2 * s);
+}
+
+function drawMount() {
+  cx.fillStyle = '#4a4f55';
+  for (const x of [-14, -8, 6, 12]) cx.fillRect(SX(x), SY(14), 2.2 * s, 14 * s);
+  cx.fillStyle = '#5d636a'; cx.fillRect(SX(MOUNT.x0), SY(MOUNT.y1), (MOUNT.x1 - MOUNT.x0) * s, 8 * s);
+  cx.fillStyle = '#2c3036'; cx.fillRect(SX(-6), SY(MOUNT.y1), 12 * s, 3 * s);
+  cx.fillStyle = '#71777e'; cx.fillRect(SX(MOUNT.x0), SY(MOUNT.y1), (MOUNT.x1 - MOUNT.x0) * s, 1 * s);
+}
+
+function drawArms() {
+  const inner = armInner(S);
+  const yT = SY(ARM_H + ARM_T / 2), hh = ARM_T * s;
+  for (const sg of [-1, 1]) {
+    const a = sg * inner, b = sg * (inner + ARM_LEN);
+    const xa = SX(Math.min(a, b)), w = ARM_LEN * s;
+    cx.fillStyle = '#3b424b';
+    const root = sg * TOWER_HW;
+    if (Math.abs(a) > TOWER_HW) cx.fillRect(SX(Math.min(root, a)), yT + hh * .25, Math.abs(a - root) * s, hh * .5);
+    cx.fillStyle = '#434a53'; cx.fillRect(xa, yT, w, hh);
+    cx.strokeStyle = '#7a838d'; cx.lineWidth = Math.max(1, .35 * s);
+    cx.beginPath();
+    for (let k = 0; k < ARM_LEN; k += 3) {
+      const u = SX(Math.min(a, b) + k), v = SX(Math.min(a, b) + k + 3);
+      cx.moveTo(u, yT + hh); cx.lineTo(v, yT);
+    }
+    cx.stroke();
+    cx.fillStyle = '#c9cfd5'; cx.fillRect(xa, yT - .5 * s, w, .7 * s);
+    cx.fillStyle = '#ffb000'; cx.fillRect(sg < 0 ? xa + w - 1.2 * s : xa, yT, 1.2 * s, hh);
+  }
+}
+
+function drawTarget() {
+  const st = S;
+  if (st.phase !== 'burn' || st.arms > 0) return;
+  const hp = pinPos(st)[1] - RAIL;
+  if (hp > 160) return;
+  const xa = hullXAtArms(st);
+  const ok = Math.abs(xa) <= TOL.offset && Math.abs(st.vy) <= TOL.vyHard && Math.abs(st.vx) <= TOL.vx && Math.abs(st.th) <= TOL.tilt;
+  cx.save();
+  cx.strokeStyle = ok ? 'rgba(94,224,138,.95)' : 'rgba(255,207,90,.85)';
+  cx.lineWidth = 1.5; cx.setLineDash([5, 4]);
+  const wh = 2 * TOL.pinWindow;
+  cx.strokeRect(SX(-TOL.offset - R - PIN_OUT), SY(RAIL + wh), (2 * (TOL.offset + R + PIN_OUT)) * s, wh * s);
+  cx.setLineDash([3, 6]); cx.lineWidth = 1;
+  cx.beginPath(); cx.moveTo(SX(0), SY(RAIL + 90)); cx.lineTo(SX(0), SY(RAIL) + 6); cx.stroke();
+  cx.restore();
+}
+
+function drawShip() {
+  const st = S;
+  if (st.phase === 'boom') return;
+  const [gx, gy] = at(st, S_GEO);
+  cx.save();
+  cx.translate(SX(gx), SY(gy));
+  cx.rotate(rad(st.th));
+  cx.scale(s, s);
+  const B = L / 2, T = -L / 2; // днище (вниз) и нос (вверх) в локальных координатах
+
+  // пламя
+  for (let i = 0; i < 3; i++) if (st.e[i] > 0.01 && st.thr > 0) drawFlame(ENG_X[i], B, st.e[i] * st.thr, st.t + i, st.gim);
+
+  // двигатели
+  cx.fillStyle = '#3a3a3c';
+  for (const ex of ENG_X) {
+    cx.beginPath(); cx.moveTo(ex - .5, B); cx.lineTo(ex + .5, B); cx.lineTo(ex + .8, B + 1.7); cx.lineTo(ex - .8, B + 1.7); cx.fill();
+  }
+
+  // закрылки: ширина на рисунке ~ раскрытию
+  const flap = (y0, y1, w, side) => {
+    const ww = Math.max(0.35, w) * side, xr = R * side;
+    cx.beginPath();
+    cx.moveTo(xr * .9, y0); cx.lineTo(xr + ww, y0 + (y1 - y0) * .2); cx.lineTo(xr + ww, y1 - (y1 - y0) * .1); cx.lineTo(xr * .9, y1); cx.closePath();
+    cx.fillStyle = '#26282b'; cx.fill();
+    cx.strokeStyle = '#9aa2aa'; cx.lineWidth = .25; cx.stroke();
+  };
+  const ya = B - CFG.flaps.aft.at, yf = B - CFG.flaps.fwd.at;
+  for (const sd of [-1, 1]) { flap(ya - 6, ya + 6.5, 4 * st.ua, sd); flap(yf - 3.5, yf + 3.5, 2.6 * st.uf, sd); }
+
+  // корпус
+  const hull = new Path2D();
+  hull.moveTo(-R, B); hull.lineTo(-R, T + NOSE);
+  hull.bezierCurveTo(-R, T + NOSE * .45, -R * .55, T + .4, 0, T);
+  hull.bezierCurveTo(R * .55, T + .4, R, T + NOSE * .45, R, T + NOSE);
+  hull.lineTo(R, B); hull.closePath();
+  const g = cx.createLinearGradient(-R, 0, R, 0);
+  g.addColorStop(0, '#6c737a'); g.addColorStop(.18, '#c7cdd2'); g.addColorStop(.36, '#f2f5f7');
+  g.addColorStop(.55, '#b4bbc1'); g.addColorStop(1, '#7c838a');
+  cx.fillStyle = g; cx.fill(hull);
+  cx.save(); cx.clip(hull);
+  cx.fillStyle = '#17191c'; cx.fillRect(R * .12, T, R, L);
+  cx.strokeStyle = 'rgba(255,255,255,.07)'; cx.lineWidth = .12;
+  cx.beginPath();
+  for (let y = T; y < B; y += .9) { cx.moveTo(R * .12, y); cx.lineTo(R, y); }
+  for (let y = T; y < B; y += 1.8) for (let x = R * .12; x < R; x += .9) { cx.moveTo(x + (y % 3.6 < 1.8 ? .45 : 0), y); cx.lineTo(x + (y % 3.6 < 1.8 ? .45 : 0), y + .9); }
+  cx.stroke();
+  cx.strokeStyle = 'rgba(60,66,72,.28)'; cx.lineWidth = .12;
+  cx.beginPath(); for (let y = T + NOSE; y < B; y += 1.85) { cx.moveTo(-R, y); cx.lineTo(R * .12, y); } cx.stroke();
+  cx.fillStyle = 'rgba(40,40,44,.55)'; cx.fillRect(-R, B - 1.2, 2 * R, 1.2);
+  cx.restore();
+  // пины захвата
+  const yp = B - CFG.ship.pinHeight;
+  cx.fillStyle = '#2a2c30';
+  cx.fillRect(-R - PIN_OUT, yp - .6, PIN_OUT + .2, 1.2);
+  cx.fillRect(R - .2, yp - .6, PIN_OUT + .2, 1.2);
+  cx.restore();
+}
+
+function drawFlame(ex, B, p, t, gim) {
+  cx.save();
+  cx.globalCompositeOperation = 'lighter';
+  const y0 = B + 1.6;
+  cx.translate(ex, y0); cx.rotate(rad(gim));
+  const len = 10 + 34 * p + Math.sin(t * 47) * 1.5 + Math.sin(t * 31) * 1.2;
+  const g = cx.createLinearGradient(0, 0, 0, len);
+  g.addColorStop(0, 'rgba(255,245,230,.95)');
+  g.addColorStop(.18, 'rgba(255,190,120,.75)');
+  g.addColorStop(.55, 'rgba(255,110,60,.35)');
+  g.addColorStop(1, 'rgba(255,80,40,0)');
+  cx.fillStyle = g;
+  cx.beginPath();
+  cx.moveTo(-.75, 0); cx.quadraticCurveTo(-1.9, len * .35, 0, len);
+  cx.quadraticCurveTo(1.9, len * .35, .75, 0); cx.fill();
+  cx.fillStyle = 'rgba(190,210,255,.55)';
+  for (let k = 1; k <= 3; k++) { cx.beginPath(); cx.ellipse(0, k * 2.6 * (0.8 + p * .3), .45, .9, 0, 0, 7); cx.fill(); }
+  const glow = cx.createRadialGradient(0, 2, 0, 0, 2, 10);
+  glow.addColorStop(0, `rgba(255,170,90,${.3 * p})`); glow.addColorStop(1, 'rgba(255,120,60,0)');
+  cx.fillStyle = glow; cx.beginPath(); cx.arc(0, 2, 10, 0, 7); cx.fill();
+  cx.restore();
+}
+
+function drawParts() {
+  for (const p of parts) {
+    if (p.life < 0) continue;
+    const k = p.life / p.max, x = SX(p.x), y = SY(p.y), r = Math.max(0.1, p.r * s);
+    if (p.t === 'fire') {
+      cx.save(); cx.globalCompositeOperation = 'lighter';
+      const g = cx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(255,${Math.round(240 - 120 * k)},${Math.round(160 - 140 * k)},${.9 * (1 - k)})`);
+      g.addColorStop(1, 'rgba(255,90,20,0)');
+      cx.fillStyle = g; cx.beginPath(); cx.arc(x, y, r, 0, 7); cx.fill(); cx.restore();
+    } else if (p.t === 'smoke') {
+      const c = Math.round(60 + 60 * k);
+      cx.fillStyle = `rgba(${c},${c},${c},${.55 * (1 - k) * Math.min(1, p.life * 3)})`;
+      cx.beginPath(); cx.arc(x, y, r, 0, 7); cx.fill();
+    } else if (p.t === 'dust') {
+      cx.fillStyle = `rgba(214,198,165,${.5 * (1 - k)})`; cx.beginPath(); cx.arc(x, y, r, 0, 7); cx.fill();
+    } else if (p.t === 'steam') {
+      cx.fillStyle = `rgba(245,248,252,${.6 * (1 - k)})`; cx.beginPath(); cx.arc(x, y, r, 0, 7); cx.fill();
+    } else if (p.t === 'deb') {
+      cx.save(); cx.translate(x, y); cx.rotate(p.rot);
+      cx.fillStyle = k < .3 ? '#ffd27a' : '#55585c'; cx.fillRect(-r, -r * .4, 2 * r, r * .8); cx.restore();
+    }
+  }
+}
+
+// Красный ✕ у основания башни. Если башня за краем экрана — ✕ прижат к краю с подписью.
+function drawPointer() {
+  const m = 22, bot = H - 64, tx = SX(0), ty = SY(0);   // bot — выше кнопки «Заново»
+  const x = clamp(tx, m, W - m), y = clamp(ty, hudH + 30, bot);
+  const offL = tx < m, offR = tx > W - m, offD = ty > bot;
+  if (offD && !offL && !offR && SY(TOWER_H) < bot) return;   // башня уже на экране, низ закрыт — ✕ не нужен
+  const r = 10;
+  cx.save();
+  cx.lineCap = 'round';
+  const cross = () => { cx.beginPath(); cx.moveTo(x - r, y - r); cx.lineTo(x + r, y + r); cx.moveTo(x + r, y - r); cx.lineTo(x - r, y + r); cx.stroke(); };
+  cx.strokeStyle = 'rgba(0,0,0,.6)'; cx.lineWidth = 8; cross();
+  cx.strokeStyle = '#ff3b30'; cx.lineWidth = 4.5; cross();
+  if (offL || offR || offD) {
+    const bits = [];
+    if (offL || offR) bits.push(num(Math.abs(S.x)) + ' м ' + (offL ? 'левее' : 'правее'));
+    if (offD) bits.push(num(Math.max(0, S.y)) + ' м вниз');
+    const txt = (offD ? '▼ ' : '') + (offL ? '◀ ' : '') + 'Башня: ' + bits.join(', ') + (offR ? ' ▶' : '');
+    cx.font = '700 13px system-ui';
+    const tw = cx.measureText(txt).width;
+    const bx = clamp(x - tw / 2 - 6, 6, W - tw - 18), by = y - r - 30;
+    cx.fillStyle = 'rgba(8,13,24,.78)'; cx.fillRect(bx, by, tw + 12, 22);
+    cx.fillStyle = '#fff'; cx.textBaseline = 'middle'; cx.fillText(txt, bx + 6, by + 11.5);
+  }
+  cx.restore();
+}
+
+function drawMini() {
+  const st = S;
+  const w = 58, h = 118, x0 = W - w - 8, y0 = hudH + 36;
+  const top = CFG.start.altitude + 200;
+  cx.fillStyle = 'rgba(8,13,24,.62)'; cx.fillRect(x0, y0, w, h);
+  cx.strokeStyle = 'rgba(255,255,255,.18)'; cx.lineWidth = 1; cx.strokeRect(x0 + .5, y0 + .5, w - 1, h - 1);
+  const my = a => y0 + h - 6 - clamp(a / top, 0, 1) * (h - 12);
+  const mx = x => x0 + w / 2 + clamp(x / 600, -1, 1) * (w / 2 - 5);
+  cx.fillStyle = 'rgba(94,224,138,.22)'; cx.fillRect(x0 + 1, my(IGN_HI), w - 2, my(IGN_LO) - my(IGN_HI));
+  cx.fillStyle = '#9aa2aa'; cx.fillRect(mx(0) - 1, my(TOWER_H), 2, my(0) - my(TOWER_H));
+  cx.fillStyle = '#c9b48a'; cx.fillRect(x0 + 1, my(0), w - 2, 2);
+  cx.strokeStyle = '#ff3b30'; cx.lineWidth = 2;
+  cx.beginPath(); cx.moveTo(mx(0) - 4, my(0) - 4); cx.lineTo(mx(0) + 4, my(0) + 4); cx.moveTo(mx(0) + 4, my(0) - 4); cx.lineTo(mx(0) - 4, my(0) + 4); cx.stroke();
+  if (st.pred) {   // прогноз точки остановки после поджига
+    const px = mx(st.pred.x), py = my(Math.max(0, st.pred.y));
+    cx.strokeStyle = Math.abs(st.pred.x) < 15 ? '#5ee08a' : '#ffcf5a'; cx.lineWidth = 1.5;
+    cx.beginPath(); cx.moveTo(px - 4, py - 4); cx.lineTo(px + 4, py + 4); cx.moveTo(px + 4, py - 4); cx.lineTo(px - 4, py + 4); cx.stroke();
+  }
+  cx.fillStyle = st.phase === 'boom' ? '#ff6a5a' : '#fff';
+  cx.beginPath(); cx.arc(mx(st.x), my(lowestAlt(st)), 3, 0, 7); cx.fill();
+  cx.fillStyle = 'rgba(255,255,255,.7)'; cx.font = '600 9px system-ui'; cx.textBaseline = 'top';
+  cx.fillText('карта', x0 + 4, y0 + 3);
+}
+
+// Крупная высота рядом с кораблём: плашмя — под ним, вертикально — справа.
+function drawAltLabel() {
+  const st = S;
+  if (st.phase === 'boom' || st.phase === 'caught') return;
+  const [gx, gy] = at(st, S_GEO);
+  const px = SX(gx), py = SY(gy), flat = Math.abs(st.th) > 45;
+  const alt = Math.max(0, lowestAlt(st));
+  const k = clamp(Math.min(W / 400, (H - hudH) / 460), 1, 1.8);
+  const col = st.phase === 'belly' && alt < IGN_LO - 60 ? '#ff6a5a' : st.phase === 'belly' && alt < IGN_HI ? '#ffcf5a' : '#fff';
+  cx.save();
+  cx.font = `800 ${Math.round(26 * k)}px system-ui`;
+  cx.textBaseline = flat ? 'top' : 'middle';
+  cx.textAlign = flat ? 'center' : 'left';
+  const x = flat ? px : px + 4.5 * s + 22 * k, y = flat ? py + 4.5 * s + 18 * k : py;
+  cx.lineWidth = 5; cx.strokeStyle = 'rgba(0,0,0,.55)'; cx.lineJoin = 'round';
+  const txt = num(alt) + ' м';
+  cx.strokeText(txt, x, y);
+  cx.fillStyle = col; cx.fillText(txt, x, y);
+  cx.restore();
+}
+
+// Панель двигателей слева: три столбика по 10 делений, как громкость.
+const SEG_COL = ['#e0612b', '#e8702f', '#ef8034', '#f5903a', '#f9a142', '#fcb24b', '#fdc257', '#fed166', '#ffde7a', '#ffe991'];
+function drawEngPanel() {
+  const st = S, N = 10, sw = 22, sh = 10, gap = 3, cg = 10;
+  const barsH = N * (sh + gap);
+  const pw = 3 * sw + 2 * cg + 16, ph = barsH + 86;
+  const k = clamp(Math.min(W / 400, (H - hudH) / 460), 1, 1.8);   // крупнее на большом экране
+  const x0 = 0, y0 = 0, top = 38;
+  cx.save();
+  cx.translate(8, Math.max(hudH + 60, (H - ph * k) / 2 - 10));
+  cx.scale(k, k);
+  cx.fillStyle = 'rgba(8,13,24,.74)'; cx.fillRect(x0, y0, pw, ph);
+  cx.strokeStyle = 'rgba(255,255,255,.18)'; cx.lineWidth = 1; cx.strokeRect(x0 + .5, y0 + .5, pw - 1, ph - 1);
+  cx.textBaseline = 'top'; cx.textAlign = 'center';
+  cx.fillStyle = '#fff'; cx.font = '700 11px system-ui';
+  cx.fillText('Двигатели: ' + st.eng + ' из 3', x0 + pw / 2, y0 + 6);
+  let sum = 0;
+  for (let i = 0; i < 3; i++) {
+    const lv = st.fuel > 0 ? st.e[i] * st.thr : 0;
+    sum += lv;
+    const bx = x0 + 8 + i * (sw + cg);
+    cx.font = '700 11px system-ui';
+    cx.fillStyle = lv > 0.01 ? '#ffcf5a' : '#6b7684';
+    cx.fillText(lv > 0.01 ? Math.round(lv * 100) + '%' : 'выкл', bx + sw / 2, y0 + 22);
+    for (let k = 0; k < N; k++) {
+      const y = top + (N - 1 - k) * (sh + gap);
+      cx.fillStyle = 'rgba(255,255,255,.08)'; cx.fillRect(bx, y, sw, sh);
+      const f = clamp(lv * N - k, 0, 1);
+      if (f > 0) { cx.globalAlpha = 0.3 + 0.7 * f; cx.fillStyle = SEG_COL[k]; cx.fillRect(bx, y, sw, sh); cx.globalAlpha = 1; }
+    }
+    cx.fillStyle = '#9fb0c2'; cx.font = '600 10px system-ui';
+    cx.fillText('Д' + (i + 1), bx + sw / 2, top + barsH + 2);
+  }
+  // минимальный газ: ниже 40 % двигатель не работает, только выключить
+  const ym = top + (N - CFG.engines.minThrottle * N) * (sh + gap) - gap / 2;
+  cx.strokeStyle = 'rgba(255,255,255,.6)'; cx.lineWidth = 1; cx.setLineDash([3, 3]);
+  cx.beginPath(); cx.moveTo(x0 + 4, ym); cx.lineTo(x0 + pw - 4, ym); cx.stroke(); cx.setLineDash([]);
+  cx.fillStyle = '#fff'; cx.font = '700 12px system-ui';
+  cx.fillText('Тяга ' + num(sum * T1 / 1000, 1) + ' МН', x0 + pw / 2, top + barsH + 17);
+  cx.fillStyle = '#9fb0c2'; cx.font = '600 9.5px system-ui';
+  cx.fillText(touchUI() ? '«Газ ±», «Двиг. ±»' : 'W/S газ · Q/E двиг.', x0 + pw / 2, top + barsH + 34);
+  cx.restore();
+}
+
+function render() {
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (!S) { drawSky(); return; }
+  cx.save();
+  if (S.shake > 0) cx.translate(rnd(-1, 1) * 9 * S.shake, rnd(-1, 1) * 9 * S.shake);
+  drawSky(); drawFar(); drawClouds(); drawGround(); drawTower(); drawMount();
+  drawStreaks(); drawTarget(); drawShip(); drawArms(); drawParts();
+  cx.restore();
+  if (S.flash > 0) { cx.fillStyle = `rgba(255,236,200,${S.flash * .7})`; cx.fillRect(0, 0, W, H); }
+  drawAltLabel();
+  drawPointer();
+  drawMini();
+  drawEngPanel();
+}
+
+// ---------- цикл ----------
+let last = performance.now(), acc = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (S && mode !== 'menu' && !window.__pause) {
+    if (mode === 'play') {
+      acc += dt;
+      while (acc >= 1 / 120) { step(1 / 120); acc -= 1 / 120; }
+    } else if (S.phase === 'boom') S.bt += dt;
+    stepParts(dt);
+    if (S.flash > 0 && mode !== 'play') S.flash = Math.max(0, S.flash - dt * 2.5);
+    if (S.shake > 0 && mode !== 'play') S.shake = Math.max(0, S.shake - dt * 2);
+    updCam(dt);
+    updHUD();
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+
+// фоновая сцена для меню
+resize();
+makeClouds();
+TOL = tolerances('easy');
+S = newState(); S.x = 40; S.y = 900;
+cam = { x: 0, y: 900, V: 260, off: 0 };
+updCam(1); updHUD();
+menu();
+// отладочный доступ (проверка баланса из консоли): __pause = true; __game.start(); __game.step(1/120)
+window.__game = { get S() { return S; }, K, flip, engines, start, step, forces, rho, CFG, draw: () => { updCam(1); updHUD(); render(); } };
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
